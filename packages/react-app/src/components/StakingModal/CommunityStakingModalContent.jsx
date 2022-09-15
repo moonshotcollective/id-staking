@@ -1,13 +1,13 @@
-// @ts-nocheck
 import React, { useState, useEffect } from "react";
 import { Button, Modal, Input, Row, Col, notification } from "antd";
-import { WarningOutlined } from "@ant-design/icons";
+import { WarningOutlined, CheckOutlined } from "@ant-design/icons";
 import { ethers } from "ethers";
 import axios from "axios";
 import AddressInput from "../AddressInput";
 import DisplayAddressEns from "../DisplayAddressEns";
+
+import { ERC20ABI } from "./utils";
 import Loading from "../Loading";
-import { getCommunityStakeAmount } from "./utils";
 
 // starting all stake amounts
 const initialStakeAmounts = {
@@ -29,18 +29,7 @@ const initialStakeAddresses = {
   5: undefined,
 };
 
-// starting all loaded values
-const initialLoadedValues = {
-  0: "0",
-  1: "0",
-  2: "0",
-  3: "0",
-  4: "0",
-  5: "0",
-};
-
 export default function CommunityStakingModalContent({
-  roundData,
   writeContracts,
   readContracts,
   tx,
@@ -57,8 +46,6 @@ export default function CommunityStakingModalContent({
   const [numberOfCommunityStakes, setNumberOfCommunityStakes] = useState(1);
   const [allStakeAmounts, setAllStakeAmounts] = useState(initialStakeAmounts);
   const [allStakeAddresses, setAllStakeAddresses] = useState(initialStakeAddresses);
-  // array of amounts loaded from existing stakes
-  const [allLoadedAmounts, setAllLoadedAmounts] = useState(initialLoadedValues);
 
   /*
   Modal Status
@@ -69,42 +56,6 @@ export default function CommunityStakingModalContent({
   4) Staking
   */
 
-  /////////// UNCOMMENT TO HELP WITH DEBUGGING
-  // useEffect(() => {
-  //   console.log(
-  //     `allStakeAddresses: ${Object.values(allStakeAddresses)} \n\nallStakeAmounts: ${Object.values(
-  //       allStakeAmounts,
-  //     )} \n\nallLoadedAmounts: ${Object.values(allLoadedAmounts)}`,
-  //   );
-  // }, [allStakeAddresses, allStakeAmounts, allLoadedAmounts]);
-
-  // set starting amount on modal open
-  useEffect(() => {
-    const communityStakeAmount = getCommunityStakeAmount(roundData);
-    if (isModalVisible && communityStakeAmount && parseFloat(communityStakeAmount) > 0) {
-      const xstakes = roundData?.user?.xstakeTo;
-      if (xstakes.length > 0) {
-        setNumberOfCommunityStakes(xstakes.length);
-        const tempAddresses = {};
-        const tempAmounts = {};
-        const tempLoadedAmounts = {};
-        // populate modal with each loaded amount and address
-        xstakes.forEach((element, i) => {
-          const tempAmount = parseFloat(ethers.utils.formatUnits(element?.amount.toString(), 18));
-          const tempAddress = element?.to?.address;
-          if (tempAmount > 0.0 && tempAddress?.length > 0) {
-            tempAmounts[i] = tempAmount.toFixed(2).toString();
-            tempLoadedAmounts[i] = tempAmount.toFixed(2).toString();
-            tempAddresses[i] = tempAddress;
-          }
-        });
-        setAllStakeAddresses(tempAddresses);
-        setAllStakeAmounts(tempAmounts);
-        setAllLoadedAmounts(tempLoadedAmounts);
-      }
-    }
-  }, [isModalVisible]);
-
   // Sums up all the stake amounts entered on screen
   const getTotalAmountStaked = () => {
     const amounts = Object.values(allStakeAmounts);
@@ -113,10 +64,6 @@ export default function CommunityStakingModalContent({
       total += parseFloat(amount);
     });
     return total;
-  };
-
-  const getTotalAmountStakedString = () => {
-    return getTotalAmountStaked().toFixed(2);
   };
 
   const getTotalNumberOfStakees = () => {
@@ -191,20 +138,18 @@ export default function CommunityStakingModalContent({
 
   // Allows the user to change stake amount
   const increaseStakeAmount = index => {
-    const getCurrentAmount = allStakeAmounts[index] || "0.00";
-    const newStakeAmount = parseFloat(getCurrentAmount) + 1.0;
+    const newStakeAmount = parseFloat(allStakeAmounts[index]) + 1.0;
     setAllStakeAmounts({
       ...allStakeAmounts,
-      [index]: newStakeAmount.toFixed(2).toString(),
+      [index]: newStakeAmount.toString(),
     });
   };
   const decreaseStakeAmount = index => {
     const newStakeAmount = parseFloat(allStakeAmounts[index]) - 1.0;
-    const loadedAmount = parseFloat(allLoadedAmounts[index]);
-    if ((loadedAmount && newStakeAmount >= loadedAmount) || (!loadedAmount && newStakeAmount >= 0)) {
+    if (newStakeAmount >= 0) {
       setAllStakeAmounts({
         ...allStakeAmounts,
-        [index]: newStakeAmount.toFixed(2).toString(),
+        [index]: newStakeAmount.toString(),
       });
     }
   };
@@ -223,30 +168,19 @@ export default function CommunityStakingModalContent({
   };
 
   const handleCancel = () => {
-    // reset values
-    setAllStakeAddresses(initialStakeAddresses);
-    setAllStakeAmounts(initialStakeAmounts);
-    setAllLoadedAmounts(initialLoadedValues);
-    // close modal
     setIsModalVisible(false);
   };
 
   // used to remove either address or amount from an index
-  /*
-    objOfVal -> object of values to remove value from
-    index -> index of value to remove
-    nullVal -> a null value for array could be a string, undefined or null
-    initial -> empty/initial state of objOfVal
-  */
-  const removeItemAtIndex = (objOfVal, index, nullVal, initial) => {
-    const allValues = Object.values(objOfVal);
+  const removeItemAtIndex = (arrayOfVal, index, nullVal, initial) => {
+    const allValues = Object.values(arrayOfVal);
     let newVal = [];
 
     // create new array of numbers
     if (index === 0) {
       allValues.shift();
       newVal = allValues.concat(nullVal);
-    } else if (index === objOfVal.length) {
+    } else if (index === arrayOfVal.length) {
       allValues.pop();
       newVal = allValues.concat(nullVal);
     } else {
@@ -290,42 +224,21 @@ export default function CommunityStakingModalContent({
                 loading={modalStatus === 4}
                 onClick={async () => {
                   const amounts = Object.values(allStakeAmounts);
-                  let copiedAddresses = allStakeAddresses;
+                  const addresses = Object.values(allStakeAddresses);
                   let canStake = true;
 
                   // filter amounts for 0
-                  const filteredAmounts = amounts.filter((amount, i) => {
-                    const currentAmount = parseFloat(amount);
-                    const loadedAmount = parseFloat(allLoadedAmounts[i]) || 0.0;
-                    const valid = currentAmount > 0 && currentAmount > loadedAmount;
-                    // remove the address from list if it belongs to an existing stake that will not change
-                    if (!valid) {
-                      copiedAddresses = removeItemAtIndex(allStakeAddresses, i, undefined, initialStakeAddresses);
-                      //Remove from allLoadedAmounts
-                      const tempAllLoadedAmounts = removeItemAtIndex(allLoadedAmounts, i, "0", initialLoadedValues);
-                      setAllLoadedAmounts(tempAllLoadedAmounts);
-                    }
-                    return valid;
-                  });
-
+                  const filteredAmounts = amounts.filter(amount => parseFloat(amount) > 0);
                   // filter addresses for undefined
-                  const addresses = Object.values(copiedAddresses);
                   const filteredAddresses = addresses.filter(address => address !== undefined);
 
-                  //Parse units on amounts  and substract loaded amounts
+                  //Parse units on amounts
                   const parsedAmounts = [];
-                  filteredAmounts.forEach((amount, i) => {
-                    let currentAmount = parseFloat(amount);
-                    const loadedAmount = parseFloat(allLoadedAmounts[i]) || 0.0;
-                    //Substract loaded amount from current amount
-                    if (loadedAmount > 0) {
-                      currentAmount -= loadedAmount;
-                    }
-                    console.log("current amount ", currentAmount);
-                    parsedAmounts.push(ethers.utils.parseUnits(currentAmount.toFixed(2).toString()));
+                  filteredAmounts.forEach(amount => {
+                    parsedAmounts.push(ethers.utils.parseUnits(amount));
                   });
 
-                  // Block user from community staking on self
+                  // Check if any of the addresses
                   filteredAddresses.forEach(filteredAddress => {
                     if (filteredAddress === address) {
                       canStake = false;
@@ -375,7 +288,6 @@ export default function CommunityStakingModalContent({
               <Row gutter={20} style={{ paddingTop: "10px", paddingBottom: "10px" }} key={i}>
                 <Col className="gutter-row" span={12}>
                   <AddressInput
-                    value={allStakeAddresses[i]}
                     onChange={e => {
                       const tempAllAddresses = allStakeAddresses;
                       tempAllAddresses[i] = e;
@@ -413,15 +325,9 @@ export default function CommunityStakingModalContent({
                         initialStakeAddresses,
                       );
                       setAllStakeAddresses(tempAllAddresses);
-
                       //Remove from allStakeAmounts
                       const tempAllAmounts = removeItemAtIndex(allStakeAmounts, i, "0", initialStakeAmounts);
                       setAllStakeAmounts(tempAllAmounts);
-
-                      //Remove from allLoadedAmounts
-                      const tempAllLoadedAmounts = removeItemAtIndex(allLoadedAmounts, i, "0", initialLoadedValues);
-                      setAllLoadedAmounts(tempAllLoadedAmounts);
-
                       // Decrease number of stake inputs
                       setNumberOfCommunityStakes(numberOfCommunityStakes - 1);
                     }}
@@ -435,7 +341,9 @@ export default function CommunityStakingModalContent({
               <Col span={24}>
                 <Button
                   onClick={() => {
-                    setNumberOfCommunityStakes(numberOfCommunityStakes + 1);
+                    if (numberOfCommunityStakes < 6) {
+                      setNumberOfCommunityStakes(numberOfCommunityStakes + 1);
+                    }
                   }}
                   block
                 >
@@ -447,16 +355,12 @@ export default function CommunityStakingModalContent({
             {getTotalAmountStaked() > 0 && (modalStatus === 3 || modalStatus === 4) && (
               <>
                 <p className="mt-4">
-                  You’ll be staking a total of{" "}
-                  <span className="font-bold">
-                    {getTotalAmountStakedString()}
-                    GTC
-                  </span>{" "}
-                  on {getTotalNumberOfStakees()} people.
+                  You’ll be staking a total of <span className="font-bold">{getTotalAmountStaked()} GTC</span> on{" "}
+                  {getTotalNumberOfStakees()} people.
                 </p>
                 <ul className="ml-4 list-disc">
                   {[...Array(numberOfCommunityStakes)].map((_, i) => (
-                    <li key={i}>
+                    <li>
                       {`${allStakeAmounts[i]} GTC on `}
                       <DisplayAddressEns address={allStakeAddresses[i]} ensProvider={mainnetProvider} />
                     </li>

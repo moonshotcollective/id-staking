@@ -3,7 +3,6 @@ import SelfStakingModalContent from "./SelfStakingModalContent";
 import CommunityStakingModalContent from "./CommunityStakingModalContent";
 
 export default function StakingModal({
-  roundData,
   isModalVisible,
   setIsModalVisible,
   stakingType,
@@ -20,7 +19,6 @@ export default function StakingModal({
     <div>
       {stakingType === "self" && (
         <SelfStakingModalContent
-          roundData={roundData}
           writeContracts={writeContracts}
           readContracts={readContracts}
           tx={tx}
@@ -33,7 +31,6 @@ export default function StakingModal({
       )}
       {stakingType === "community" && (
         <CommunityStakingModalContent
-          roundData={roundData}
           writeContracts={writeContracts}
           readContracts={readContracts}
           tx={tx}

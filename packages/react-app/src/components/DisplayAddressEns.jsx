@@ -11,7 +11,11 @@ export default function DisplayAddressEns(props) {
   const ens = useLookupAddress(props.ensProvider, address);
 
   if (!address) {
-    return <span>undefined</span>;
+    return (
+      <span>
+        <Skeleton avatar paragraph={{ rows: 1 }} />
+      </span>
+    );
   }
 
   let displayAddress = address.substr(0, 6);
